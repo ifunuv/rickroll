@@ -1,0 +1,8 @@
+name = "proxy-hub"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Đổi password ở đây hoặc dùng: npx wrangler secret put PASSWORD
+# PASSWORD = "proxy2026"
