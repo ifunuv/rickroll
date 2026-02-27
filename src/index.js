@@ -3,7 +3,7 @@
 //  Có giao diện web đẹp + proxy URL
 // ============================================================
 
-const PASSWORD = "victory"; // ← ĐỔI MẬT KHẨU Ở ĐÂY
+const PASSWORD = "victory_v2_proxy"; // ← ĐỔI MẬT KHẨU Ở ĐÂY
 
 export default {
   async fetch(request, env, ctx) {
@@ -336,12 +336,31 @@ function getHTML() {
   .result-frame {
     display: none;
     width: 100%;
-    height: 600px;
+    height: 82vh;
     border: 1px solid var(--border);
     border-radius: 10px;
     background: #fff;
     margin-top: 16px;
+    transition: all 0.3s;
   }
+  .result-frame.fullscreen {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    border-radius: 0;
+    border: none;
+    margin: 0;
+  }
+
+  .fullscreen-bar {
+    display: none;
+    position: fixed;
+    top: 12px; right: 12px;
+    z-index: 10000;
+  }
+  .fullscreen-bar.visible { display: flex; }
 
   /* Result text */
   .result-text {
@@ -442,16 +461,23 @@ function getHTML() {
     <input type="url" class="url-input" id="urlInput" placeholder="https://example.com" onkeydown="if(event.key==='Enter')fetchURL()">
     <div class="actions-row">
       <button class="btn btn-primary" onclick="fetchURL()">🚀 Fetch</button>
-      <button class="btn btn-ghost btn-sm" onclick="showMode('render')">Render HTML</button>
-      <button class="btn btn-ghost btn-sm" onclick="showMode('text')">Raw Text</button>
-      <button class="btn btn-ghost btn-sm" onclick="clearResult()">Clear</button>
+      <button class="btn btn-ghost btn-sm" id="btnRender" onclick="showMode('render')">Render HTML</button>
+      <button class="btn btn-ghost btn-sm" id="btnText" onclick="showMode('text')">Raw Text</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleFullscreen()" id="btnFS">⛶ Fullscreen</button>
+      <button class="btn btn-ghost btn-sm" onclick="openNewTab()">↗ New Tab</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearResult()">✕ Clear</button>
     </div>
     <div class="status-bar" id="proxyStatus">
       <div class="dot" id="proxyDot"></div>
       <span id="proxyText">Sẵn sàng</span>
     </div>
-    <iframe id="resultFrame" class="result-frame" sandbox="allow-same-origin allow-scripts"></iframe>
+    <iframe id="resultFrame" class="result-frame" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
     <div id="resultText" class="result-text"></div>
+  </div>
+
+  <!-- Fullscreen exit button -->
+  <div class="fullscreen-bar" id="fsBar">
+    <button class="btn btn-primary btn-sm" onclick="toggleFullscreen()">✕ Thoát Fullscreen</button>
   </div>
 
   <div class="footer">ProxyHub · Running on Cloudflare Edge · Personal use only</div>
@@ -460,13 +486,47 @@ function getHTML() {
 <script>
 let pwd = '';
 let mode = 'render';
+let lastHTML = '';
 
 function showMode(m) {
   mode = m;
-  document.querySelectorAll('.btn-ghost').forEach(b => b.style.borderColor = '');
-  document.querySelector(\`[onclick="showMode('\${m}')"]\`).style.borderColor = 'var(--accent)';
+  document.getElementById('btnRender').style.borderColor = m === 'render' ? 'var(--accent)' : '';
+  document.getElementById('btnRender').style.color = m === 'render' ? 'var(--accent)' : '';
+  document.getElementById('btnText').style.borderColor = m === 'text' ? 'var(--accent)' : '';
+  document.getElementById('btnText').style.color = m === 'text' ? 'var(--accent)' : '';
+  // Re-render nếu đã có data
+  if (lastHTML) {
+    if (m === 'render') {
+      document.getElementById('resultText').style.display = 'none';
+      const frame = document.getElementById('resultFrame');
+      frame.style.display = 'block';
+      frame.srcdoc = lastHTML;
+    } else {
+      document.getElementById('resultFrame').style.display = 'none';
+      const txt = document.getElementById('resultText');
+      txt.style.display = 'block';
+      txt.textContent = lastHTML;
+    }
+  }
 }
 showMode('render');
+
+function toggleFullscreen() {
+  const frame = document.getElementById('resultFrame');
+  const fsBar = document.getElementById('fsBar');
+  const isFS = frame.classList.contains('fullscreen');
+  frame.classList.toggle('fullscreen');
+  fsBar.classList.toggle('visible', !isFS);
+  document.getElementById('btnFS').textContent = isFS ? '⛶ Fullscreen' : '⛶ Exit';
+  document.body.style.overflow = isFS ? '' : 'hidden';
+}
+
+function openNewTab() {
+  if (!lastHTML) return;
+  const blob = new Blob([lastHTML], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
 
 async function verifyPwd() {
   pwd = document.getElementById('pwdInput').value;
@@ -502,18 +562,21 @@ async function verifyPwd() {
 }
 
 async function fetchURL() {
-  const url = document.getElementById('urlInput').value.trim();
+  const urlEl = document.getElementById('urlInput');
+  let url = urlEl.value.trim();
   if (!url) return;
   if (!url.startsWith('http')) {
-    document.getElementById('urlInput').value = 'https://' + url;
+    url = 'https://' + url;
+    urlEl.value = url;
   }
 
   setStatus('proxyDot', 'proxyText', 'loading', 'Đang tải...');
   document.getElementById('resultFrame').style.display = 'none';
   document.getElementById('resultText').style.display = 'none';
+  lastHTML = '';
 
   try {
-    const res = await fetch(\`/api/fetch?pwd=\${encodeURIComponent(pwd)}&url=\${encodeURIComponent(document.getElementById('urlInput').value)}\`);
+    const res = await fetch(\`/api/fetch?pwd=\${encodeURIComponent(pwd)}&url=\${encodeURIComponent(url)}\`);
     const data = await res.json();
 
     if (!data.ok) {
@@ -521,7 +584,8 @@ async function fetchURL() {
       return;
     }
 
-    setStatus('proxyDot', 'proxyText', 'success', \`✓ Status \${data.status} · \${data.country} [\${data.datacenter}] · \${(data.body.length/1024).toFixed(1)}KB\`);
+    lastHTML = data.body;
+    setStatus('proxyDot', 'proxyText', 'success', \`✓ \${data.status} · \${data.country} [\${data.datacenter}] · \${(data.body.length/1024).toFixed(1)}KB\`);
 
     if (mode === 'render' && data.contentType.includes('text/html')) {
       const frame = document.getElementById('resultFrame');
@@ -539,8 +603,12 @@ async function fetchURL() {
 }
 
 function clearResult() {
+  lastHTML = '';
   document.getElementById('resultFrame').style.display = 'none';
   document.getElementById('resultText').style.display = 'none';
+  // Exit fullscreen if active
+  const frame = document.getElementById('resultFrame');
+  if (frame.classList.contains('fullscreen')) toggleFullscreen();
   setStatus('proxyDot', 'proxyText', '', 'Sẵn sàng');
 }
 
